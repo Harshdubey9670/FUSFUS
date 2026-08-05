@@ -1,0 +1,1 @@
+# FUSFUS - InstaSnap AI

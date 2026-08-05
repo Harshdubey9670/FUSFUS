@@ -1,0 +1,33 @@
+{
+  "nav": {
+    "home": "Startseite",
+    "explore": "Entdecken",
+    "camera": "Kamera",
+    "chat": "Chat",
+    "profile": "Profil",
+    "notifications": "Benachrichtigungen",
+    "settings": "Einstellungen",
+    "logout": "Abmelden",
+    "search": "Suche"
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "searchPlaceholder": "Einstellungen suchen...",
+    "features": "Funktionen",
+    "categories": {
+      "account": "Konto",
+      "privacy": "Datenschutz",
+      "security": "Sicherheit",
+      "notifications": "Benachrichtigungen",
+      "appearance": "Erscheinungsbild",
+      "accessibility": "Barrierefreiheit",
+      "language": "Sprache",
+      "help": "Hilfe",
+      "about": "Über",
+      "time": "Zeitmanagement",
+      "chat": "Chat & Nachrichten",
+      "media": "Medien & Tresor",
+      "ai": "KI-Funktionen"
+    }
+  }
+}

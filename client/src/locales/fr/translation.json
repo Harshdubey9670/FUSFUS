@@ -1,0 +1,33 @@
+{
+  "nav": {
+    "home": "Accueil",
+    "explore": "Explorer",
+    "camera": "Caméra",
+    "chat": "Chat",
+    "profile": "Profil",
+    "notifications": "Notifications",
+    "settings": "Paramètres",
+    "logout": "Déconnexion",
+    "search": "Rechercher"
+  },
+  "settings": {
+    "title": "Paramètres",
+    "searchPlaceholder": "Rechercher des paramètres...",
+    "features": "Caractéristiques",
+    "categories": {
+      "account": "Compte",
+      "privacy": "Confidentialité",
+      "security": "Sécurité",
+      "notifications": "Notifications",
+      "appearance": "Apparence",
+      "accessibility": "Accessibilité",
+      "language": "Langue",
+      "help": "Aide",
+      "about": "À propos",
+      "time": "Gestion du temps",
+      "chat": "Chat et messages",
+      "media": "Médias et coffre-fort",
+      "ai": "Fonctionnalités IA"
+    }
+  }
+}

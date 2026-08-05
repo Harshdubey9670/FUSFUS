@@ -1,0 +1,33 @@
+{
+  "nav": {
+    "home": "الرئيسية",
+    "explore": "اكتشف",
+    "camera": "كاميرا",
+    "chat": "محادثة",
+    "profile": "الملف الشخصي",
+    "notifications": "إشعارات",
+    "settings": "الإعدادات",
+    "logout": "تسجيل خروج",
+    "search": "بحث"
+  },
+  "settings": {
+    "title": "الإعدادات",
+    "searchPlaceholder": "البحث في الإعدادات...",
+    "features": "الميزات",
+    "categories": {
+      "account": "الحساب",
+      "privacy": "الخصوصية",
+      "security": "الأمان",
+      "notifications": "الإشعارات",
+      "appearance": "المظهر",
+      "accessibility": "إمكانية الوصول",
+      "language": "اللغة",
+      "help": "المساعدة",
+      "about": "حول",
+      "time": "إدارة الوقت",
+      "chat": "الدردشة والرسائل",
+      "media": "الوسائط والخزنة",
+      "ai": "ميزات الذكاء الاصطناعي"
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "nav": {
+    "home": "होम",
+    "explore": "खोजें",
+    "camera": "कैमरा",
+    "chat": "चैट",
+    "profile": "प्रोफ़ाइल",
+    "notifications": "सूचनाएं",
+    "settings": "सेटिंग्स",
+    "logout": "लॉग आउट",
+    "search": "खोजें"
+  },
+  "settings": {
+    "title": "सेटिंग्स",
+    "searchPlaceholder": "सेटिंग्स खोजें...",
+    "features": "विशेषताएं",
+    "categories": {
+      "account": "खाता",
+      "privacy": "गोपनीयता",
+      "security": "सुरक्षा",
+      "notifications": "सूचनाएं",
+      "appearance": "दिखावट",
+      "accessibility": "पहुंच",
+      "language": "भाषा",
+      "help": "मदद",
+      "about": "के बारे में",
+      "time": "समय प्रबंधन",
+      "chat": "चैट और संदेश",
+      "media": "मीडिया और वॉल्ट",
+      "ai": "एआई विशेषताएं"
+    }
+  }
+}
