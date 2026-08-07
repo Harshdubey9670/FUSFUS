@@ -96,7 +96,7 @@ export const PostCard = ({ post: initialPost, onPostDeleted }) => {
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-50px" }}
-      className="bg-bg-surface sm:rounded-2xl md:rounded-3xl border-y sm:border border-border-soft/70 shadow-none sm:shadow-sm hover:sm:shadow-md transition-shadow duration-300 overflow-hidden mb-3 sm:mb-6"
+      className="bg-bg-surface sm:rounded-[24px] border-y sm:border border-border-soft/60 shadow-md sm:shadow-lg hover:shadow-xl hover:border-primary-500/20 transition-all duration-300 overflow-hidden mb-6 sm:mb-8 md:mb-10"
     >
       <PostHeader 
         user={post.user} 

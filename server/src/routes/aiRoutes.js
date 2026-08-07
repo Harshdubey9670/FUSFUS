@@ -6,6 +6,7 @@ const { protect } = require('../middleware/authMiddleware');
 router.use(protect);
 
 router.post('/assistant', aiController.chatAssistant);
+router.post('/generate-image', aiController.generateImage);
 router.post('/caption', aiController.generateCaption);
 router.post('/hashtags', aiController.generateHashtags);
 router.post('/bio', aiController.generateBio);

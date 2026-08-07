@@ -10,6 +10,15 @@ exports.chatAssistant = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+exports.generateImage = async (req, res, next) => {
+  try {
+    const { prompt } = req.body;
+    if (!prompt) return res.status(400).json({ success: false, message: 'Prompt is required' });
+    const data = await aiService.generateImage(prompt);
+    res.status(200).json({ success: true, data });
+  } catch (err) { next(err); }
+};
+
 exports.generateCaption = async (req, res, next) => {
   try {
     const { topic, tone } = req.body;

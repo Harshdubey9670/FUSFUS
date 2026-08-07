@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { cn } from "../../utils/cn";
-import { Home, Compass, MessageSquare, Bell, User, PlusSquare, BarChart3, DollarSign, Sparkles } from "lucide-react";
+import { Home, Compass, MessageSquare, Bell, User, PlusSquare, BarChart3, DollarSign, Sparkles, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 export const Sidebar = ({ className }) => {
@@ -17,6 +17,7 @@ export const Sidebar = ({ className }) => {
     { label: t("nav.camera"),         icon: PlusSquare,   path: "/app/camera" },
     { label: t("nav.notifications"),  icon: Bell,         path: "/app/notifications", badge: unreadNotificationsCount },
     { label: t("nav.chat"),           icon: MessageSquare, path: "/app/chat" },
+    { label: "Secure Vault",          icon: ShieldCheck,  path: "/app/vault" },
     { label: t("nav.profile"),        icon: User,         path: "/app/profile" },
   ];
 

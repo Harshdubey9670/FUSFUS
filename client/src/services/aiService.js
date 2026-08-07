@@ -5,6 +5,11 @@ export const chatAssistant = async (prompt, conversationHistory = []) => {
   return response.data;
 };
 
+export const generateImage = async (prompt) => {
+  const response = await api.post('/api/ai/generate-image', { prompt });
+  return response.data;
+};
+
 export const generateCaption = async (topic, tone) => {
   const response = await api.post('/api/ai/caption', { topic, tone });
   return response.data;

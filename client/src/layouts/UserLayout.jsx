@@ -10,10 +10,13 @@ import { Sidebar } from "../components/navigation/Sidebar";
 import { MobileNav } from "../components/navigation/MobileNav";
 import { CreatePostModal } from "../components/post/CreatePostModal";
 import { Plus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useEdgeSwipe } from "../hooks/useEdgeSwipe";
 
 export const UserLayout = () => {
   const dispatch = useDispatch();
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
   const { socket } = useSocketContext();
   const { user: authUser } = useSelector((state) => state.auth);
 
@@ -77,6 +80,26 @@ export const UserLayout = () => {
     };
   }, [socket, authUser, dispatch]);
 
+  // Handle Edge Swiping for Camera Navigation & Pull-to-Refresh
+  useEdgeSwipe({
+    onSwipeRight: () => {
+      // Only navigate to camera if we are on the home page
+      if (location.pathname === '/app') {
+        navigate('/app/camera');
+      }
+    },
+    onSwipeLeft: () => {
+      // Navigate to chat if we are on the home page
+      if (location.pathname === '/app') {
+        navigate('/app/chat');
+      }
+    },
+    onSwipeDown: () => {
+      // Trigger a hard refresh to update feeds/reels with latest data
+      window.location.reload();
+    }
+  });
+
   // Handle Global Theme Application
   const { settings } = useSelector((state) => state.auth);
   const { setTheme } = useTheme();
@@ -122,18 +145,11 @@ export const UserLayout = () => {
       root.lang = settings.language.preferred;
     }
   }, [settings?.language?.preferred]);
-
-  const location = useLocation();
   
   // Pages that should take full available width (no padding, no max-width)
   const isFullWidthPage = location.pathname.includes('/chat')
     || location.pathname.includes('/settings')
     || location.pathname.includes('/camera');
-
-  // Pages where the FAB should be hidden
-  const hideFAB = location.pathname.includes('/reels')
-    || location.pathname.includes('/camera')
-    || location.pathname.includes('/chat');
 
   // Pages where the feed/main area uses overflow-hidden (e.g. reels use their own scroll)
   const isOwnScrollPage = location.pathname.includes('/reels')
@@ -178,20 +194,6 @@ export const UserLayout = () => {
           </div>
         </main>
       </div>
-
-      {/* Global FAB — fixed, never moves */}
-      {!hideFAB && (
-        <button
-          onClick={() => setIsCreateOpen(true)}
-          className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] right-4 md:bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] lg:bottom-8 lg:right-8 z-40 p-3.5 md:p-4 rounded-full hero-gradient text-white shadow-2xl hover:scale-110 hover:shadow-glow transition-all duration-300 flex items-center justify-center group border border-white/20 active:scale-95"
-          title="Create New Post"
-          aria-label="Create New Post"
-        >
-          <Plus className="w-6 h-6 group-hover:rotate-90 transition-transform duration-300" strokeWidth={2.5} />
-        </button>
-      )}
-
-      <CreatePostModal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} />
 
       {/* Bottom mobile navigation — fixed, never moves */}
       <MobileNav />

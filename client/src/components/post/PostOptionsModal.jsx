@@ -4,10 +4,13 @@ import { useSelector } from "react-redux";
 import { cn } from "../../utils/cn";
 import { useToast } from "../ui/Toast";
 import api from "../../services/api";
+import { EditPostModal } from "./EditPostModal";
+import { useState } from "react";
 
 export const PostOptionsModal = ({ isOpen, onClose, post, onPostDeleted, onPostUpdated }) => {
   const { user: authUser } = useSelector((state) => state.auth);
   const { showToast } = useToast();
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   if (typeof document === "undefined") return null;
 
@@ -104,6 +107,7 @@ export const PostOptionsModal = ({ isOpen, onClose, post, onPostDeleted, onPostU
   };
 
   return createPortal(
+    <>
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
@@ -138,7 +142,7 @@ export const PostOptionsModal = ({ isOpen, onClose, post, onPostDeleted, onPostU
                 <button onClick={handleToggleLikes} className="w-full py-3.5 text-text-primary font-medium border-b border-border-soft hover:bg-bg-surface transition-colors active:bg-bg-surface-hover">
                   {post.settings?.hideLikes ? "Unhide like count" : "Hide like count"}
                 </button>
-                <button onClick={() => { onClose(); showToast("Edit UI coming soon", "info"); }} className="w-full py-3.5 text-text-primary font-medium border-b border-border-soft hover:bg-bg-surface transition-colors active:bg-bg-surface-hover">
+                <button onClick={() => setIsEditModalOpen(true)} className="w-full py-3.5 text-text-primary font-medium border-b border-border-soft hover:bg-bg-surface transition-colors active:bg-bg-surface-hover">
                   Edit
                 </button>
               </>
@@ -161,7 +165,17 @@ export const PostOptionsModal = ({ isOpen, onClose, post, onPostDeleted, onPostU
           </motion.div>
         </div>
       )}
-    </AnimatePresence>,
+    </AnimatePresence>
+    <EditPostModal 
+      isOpen={isEditModalOpen} 
+      onClose={() => {
+        setIsEditModalOpen(false);
+        onClose();
+      }} 
+      post={post} 
+      onPostUpdated={onPostUpdated} 
+    />
+    </>,
     document.body
   );
 };

@@ -129,9 +129,8 @@ const ReelItem = ({ reel, isActive, isMuted, onMuteToggle }) => {
 
   return (
     <div
-      className="relative w-full h-full bg-black overflow-hidden flex-shrink-0"
+      className="relative w-full h-full md:w-[450px] md:h-[90dvh] md:max-h-[900px] md:rounded-2xl md:border md:border-neutral-800 bg-black overflow-hidden shadow-2xl transition-all duration-300"
       onClick={handleTap}
-      style={{ scrollSnapAlign: "start" }}
     >
       {/* Video with DRM Download Prevention */}
       <video
@@ -367,7 +366,7 @@ const ReelsPage = () => {
     /* Full-screen reel container */
     <div
       ref={containerRef}
-      className="fixed inset-0 z-40 bg-black overflow-y-scroll no-scrollbar"
+      className="w-full h-full bg-black md:bg-neutral-950 overflow-y-scroll no-scrollbar"
       style={{
         scrollSnapType: "y mandatory",
         WebkitOverflowScrolling: "touch",
@@ -380,7 +379,8 @@ const ReelsPage = () => {
           data-reel-item
           data-reel-index={idx}
           data-reel-id={reel._id}
-          className="reel-item w-full flex-shrink-0"
+          className="w-full h-full min-h-[100dvh] flex items-center justify-center flex-shrink-0"
+          style={{ scrollSnapAlign: "start" }}
         >
           <ReelItem
             reel={reel}

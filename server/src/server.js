@@ -21,11 +21,13 @@ validateEnv();
 const app = express();
 const httpServer = createServer(app);
 
-// Setup Socket.io
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: function (origin, callback) {
+      callback(null, true);
+    },
     methods: ['GET', 'POST'],
+    credentials: true
   }
 });
 
@@ -40,7 +42,7 @@ const globalLimiter = rateLimit({
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // strict limit for auth routes
+  max: process.env.NODE_ENV === 'production' ? 10 : 100, // strict limit for auth routes in prod, lenient in dev
   message: 'Too many authentication attempts, please try again later',
   standardHeaders: true,
   legacyHeaders: false,
@@ -50,10 +52,14 @@ const authLimiter = rateLimit({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors({
-  origin: [process.env.CLIENT_URL, 'http://localhost:5173', 'http://localhost:5174'].filter(Boolean),
+  origin: function (origin, callback) {
+    callback(null, true);
+  },
   credentials: true
 }));
-app.use(helmet());
+app.use(helmet({
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" }
+}));
 app.use(morgan('dev'));
 
 // Apply Global Rate Limiter

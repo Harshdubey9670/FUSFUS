@@ -47,6 +47,7 @@ exports.updateSettings = async (req, res, next) => {
       } else {
         settings[category] = updates[category];
       }
+      settings.markModified(category);
     }
 
     await settings.save();

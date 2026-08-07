@@ -72,14 +72,14 @@ export const StoriesRow = ({ stories = [], liveStreams = [], isLoading, onStoryC
           whileTap={{ scale: 0.95 }}
           key={storyGroup.user._id}
           onClick={() => onStoryClick && onStoryClick(index)}
-          className="flex flex-col items-center gap-1.5 shrink-0 cursor-pointer snap-start"
+          className="flex flex-col items-center gap-1.5 shrink-0 cursor-pointer snap-start group"
           role="button"
           tabIndex={0}
           aria-label={`${storyGroup.user.username}'s story`}
           onKeyDown={(e) => e.key === 'Enter' && onStoryClick?.(index)}
         >
-          <div className="w-[60px] h-[60px] sm:w-[68px] sm:h-[68px] rounded-full hero-gradient p-[2px]">
-            <div className="w-full h-full rounded-full border-2 border-bg-base overflow-hidden">
+          <div className="w-[60px] h-[60px] sm:w-[68px] sm:h-[68px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 p-[2.5px] transition-transform duration-300 group-hover:scale-105 group-hover:rotate-[10deg] shadow-sm group-hover:shadow-md">
+            <div className="w-full h-full rounded-full border-[2.5px] border-bg-base overflow-hidden transition-transform duration-300 group-hover:-rotate-[10deg]">
               <img
                 src={storyGroup.user.profilePicture || "https://i.pravatar.cc/150"}
                 alt={storyGroup.user.username}

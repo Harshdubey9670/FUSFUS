@@ -6,6 +6,10 @@ const Message = require('../models/Message');
 // Map<userId (string), Set<socketId (string)>>
 const onlineUsers = new Map(); 
 
+// Tracks which users are actively viewing a conversation.
+// Map<conversationId (string), Set<userId (string)>>
+const conversationPresence = new Map();
+
 let ioInstance;
 
 const getOnlineUsersList = () => {
@@ -51,6 +55,7 @@ const initSocket = (io) => {
     onlineUsers.get(userId).add(socket.id);
 
     // 3. Broadcast updated online users list
+    // Send to everyone, including the new socket
     io.emit('getOnlineUsers', getOnlineUsersList());
 
     // Handle Typing events
@@ -72,9 +77,60 @@ const initSocket = (io) => {
       }
     });
 
+    // ─── Conversation Presence (Snapchat-style) ───
+    const leaveConversation = (conversationId) => {
+      if (!conversationId) return;
+      const presence = conversationPresence.get(conversationId);
+      if (presence) {
+        presence.delete(userId);
+        io.to(`conv_${conversationId}`).emit('conversationPresenceUpdate', Array.from(presence));
+        if (presence.size === 0) {
+          conversationPresence.delete(conversationId);
+        }
+      }
+      socket.leave(`conv_${conversationId}`);
+      socket.currentConversation = null;
+    };
+
+    socket.on('joinConversation', (conversationId) => {
+      // Leave any existing conversation first
+      if (socket.currentConversation && socket.currentConversation !== conversationId) {
+        leaveConversation(socket.currentConversation);
+      }
+
+      socket.currentConversation = conversationId;
+      socket.join(`conv_${conversationId}`);
+
+      if (!conversationPresence.has(conversationId)) {
+        conversationPresence.set(conversationId, new Set());
+      }
+      conversationPresence.get(conversationId).add(userId);
+
+      // Broadcast to the room who is currently active
+      io.to(`conv_${conversationId}`).emit('conversationPresenceUpdate', Array.from(conversationPresence.get(conversationId)));
+    });
+
+    socket.on('leaveConversation', (conversationId) => {
+      leaveConversation(conversationId);
+    });
+
+    socket.on('chatScreenshot', ({ conversationId, receiverId }) => {
+      // Notify the other user that a screenshot was taken of the chat
+      io.to(receiverId).emit('chatScreenshotNotification', {
+        conversationId,
+        takenBy: socket.user.username,
+        takenAt: new Date()
+      });
+    });
+
     // 4. Handle Disconnection
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
       console.log(`User disconnected: ${userId} (Socket: ${socket.id})`);
+      
+      // Cleanup conversation presence
+      if (socket.currentConversation) {
+        leaveConversation(socket.currentConversation);
+      }
       
       const userSockets = onlineUsers.get(userId);
       if (userSockets) {
@@ -82,6 +138,13 @@ const initSocket = (io) => {
         if (userSockets.size === 0) {
           onlineUsers.delete(userId);
           io.emit('getOnlineUsers', getOnlineUsersList());
+          
+          // Update lastSeen in DB
+          try {
+            await User.findByIdAndUpdate(userId, { lastSeen: new Date() });
+          } catch (err) {
+            console.error('Error updating lastSeen:', err);
+          }
         }
       }
     });

@@ -21,27 +21,27 @@ const seedMockReelsIfNeeded = async () => {
 
   const mockVideos = [
     {
-      url: 'https://videos.pexels.com/video-files/4761354/4761354-hd_1080_1920_30fps.mp4',
+      url: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
       caption: 'Golden hour vibes ✨ #sunset #vibes #aesthetic',
       music: { title: 'Golden Hour', artist: 'JVKE' },
     },
     {
-      url: 'https://videos.pexels.com/video-files/3214448/3214448-uhd_2160_4096_25fps.mp4',
+      url: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
       caption: 'Nature is healing 🌿 #nature #peaceful #relaxing',
       music: { title: 'Forest Sound', artist: 'Ambient' },
     },
     {
-      url: 'https://videos.pexels.com/video-files/3571264/3571264-hd_1080_1920_30fps.mp4',
+      url: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
       caption: 'City nights never sleep 🌃 #citylife #urban #nighttime',
       music: { title: 'Midnight City', artist: 'M83' },
     },
     {
-      url: 'https://videos.pexels.com/video-files/4812205/4812205-hd_1080_1920_25fps.mp4',
+      url: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
       caption: 'Ocean therapy 🌊 #ocean #waves #travel',
       music: { title: 'Ocean Eyes', artist: 'Billie Eilish' },
     },
     {
-      url: 'https://videos.pexels.com/video-files/3571264/3571264-hd_1080_1920_30fps.mp4',
+      url: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
       caption: 'Coffee culture ☕ #coffee #morning #lifestyle',
       music: { title: 'Good Day', artist: 'Surfaces' },
     },

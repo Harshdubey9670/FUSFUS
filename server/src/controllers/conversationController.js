@@ -42,7 +42,7 @@ exports.getConversations = async (req, res, next) => {
     await seedMockConversationsIfNeeded(req.user._id);
 
     const conversations = await Conversation.find({ participants: req.user._id })
-      .populate('participants', 'username fullName profilePicture')
+      .populate('participants', 'username fullName profilePicture lastSeen')
       .populate({
         path: 'latestMessage',
         select: 'text messageType status seenBy sender isDeleted createdAt',

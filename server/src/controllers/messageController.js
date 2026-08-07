@@ -53,7 +53,8 @@ exports.sendMessage = async (req, res, next) => {
       mediaUrl,
       isSnap = false,
       snapTimer = 10,
-      viewMode = 'view_once'
+      viewMode = 'view_once',
+      clientMessageId
     } = req.body;
 
     const conversation = await Conversation.findById(conversationId);
@@ -97,10 +98,12 @@ exports.sendMessage = async (req, res, next) => {
 
     const io = getIo();
     if (io) {
+      // Attach clientMessageId so the sender's frontend can deduplicate the socket event 
+      // if it arrives before or after the HTTP response.
+      const socketPayload = { ...newMessage.toJSON(), clientMessageId };
+      
       conversation.participants.forEach((participantId) => {
-        if (participantId.toString() !== req.user._id.toString()) {
-          io.to(participantId.toString()).emit('newMessage', newMessage);
-        }
+        io.to(participantId.toString()).emit('newMessage', socketPayload);
       });
     }
 

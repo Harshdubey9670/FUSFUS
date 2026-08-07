@@ -15,7 +15,8 @@ export function SnapViewerModal({ snap, onClose, onSnapExpired }) {
   useEffect(() => {
     // Screenshot Detection Listeners
     const handleKeyDown = (e) => {
-      if (e.key === 'PrintScreen' || (e.metaKey && e.shiftKey)) {
+      const isMacScreenshot = e.metaKey && e.shiftKey && ['3', '4', '5', 's'].includes(e.key.toLowerCase());
+      if (e.key === 'PrintScreen' || isMacScreenshot) {
         triggerScreenshotDetection();
       }
     };

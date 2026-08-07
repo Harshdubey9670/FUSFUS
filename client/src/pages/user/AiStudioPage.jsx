@@ -24,10 +24,14 @@ import {
   detectFakeAccount, 
   generateAltText 
 } from '../../services/aiService';
+import { useToast } from '../../components/ui/Toast';
+import { Loader2 } from 'lucide-react';
 
 export default function AiStudioPage() {
   const [activeTab, setActiveTab] = useState('captions'); // captions, bio, strategy, translator, safety
   const [copiedIndex, setCopiedIndex] = useState(null);
+  const { showToast } = useToast();
+  const [loadingStates, setLoadingStates] = useState({});
 
   // 1. Captions & Hashtags State
   const [topic, setTopic] = useState('Fitness');
@@ -67,53 +71,101 @@ export default function AiStudioPage() {
   // Handlers
   const handleGenerateCaption = async (e) => {
     e.preventDefault();
-    const [cRes, hRes] = await Promise.all([
-      generateCaption(topic, tone),
-      generateHashtags(topic)
-    ]);
-    setGeneratedCaption(cRes.data.caption);
-    setHashtags(hRes.data.hashtags);
+    setLoadingStates(prev => ({ ...prev, caption: true }));
+    try {
+      const [cRes, hRes] = await Promise.all([
+        generateCaption(topic, tone),
+        generateHashtags(topic)
+      ]);
+      setGeneratedCaption(cRes.data.caption);
+      setHashtags(hRes.data.hashtags);
+      showToast("Caption generated successfully", "success");
+    } catch (error) {
+      showToast("Failed to generate caption", "error");
+    } finally {
+      setLoadingStates(prev => ({ ...prev, caption: false }));
+    }
   };
 
   const handleGenerateBioAndUsernames = async (e) => {
     e.preventDefault();
-    const [bRes, uRes] = await Promise.all([
-      generateBio(niche, tone),
-      suggestUsernames(name, niche)
-    ]);
-    setGeneratedBio(bRes.data.bio);
-    setSuggestedHandles(uRes.data.usernames);
+    setLoadingStates(prev => ({ ...prev, bio: true }));
+    try {
+      const [bRes, uRes] = await Promise.all([
+        generateBio(niche, tone),
+        suggestUsernames(name, niche)
+      ]);
+      setGeneratedBio(bRes.data.bio);
+      setSuggestedHandles(uRes.data.usernames);
+      showToast("Bio generated successfully", "success");
+    } catch (error) {
+      showToast("Failed to generate bio", "error");
+    } finally {
+      setLoadingStates(prev => ({ ...prev, bio: false }));
+    }
   };
 
   const handleGenerateStrategy = async (e) => {
     e.preventDefault();
-    const res = await generatePostIdeas(category);
-    setPostIdeas(res.data.ideas);
+    setLoadingStates(prev => ({ ...prev, strategy: true }));
+    try {
+      const res = await generatePostIdeas(category);
+      setPostIdeas(res.data.ideas);
+      showToast("Strategy generated successfully", "success");
+    } catch (error) {
+      showToast("Failed to generate strategy", "error");
+    } finally {
+      setLoadingStates(prev => ({ ...prev, strategy: false }));
+    }
   };
 
   const handleTranslate = async (e) => {
     e.preventDefault();
     if (!translateInput) return;
-    const res = await translateText(translateInput, targetLang);
-    setTranslatedResult(res.data.translatedText);
+    setLoadingStates(prev => ({ ...prev, translate: true }));
+    try {
+      const res = await translateText(translateInput, targetLang);
+      setTranslatedResult(res.data.translatedText);
+      showToast("Translation complete", "success");
+    } catch (error) {
+      showToast("Failed to translate", "error");
+    } finally {
+      setLoadingStates(prev => ({ ...prev, translate: false }));
+    }
   };
 
   const handleGenerateAltText = async (e) => {
     e.preventDefault();
     if (!imageDesc) return;
-    const res = await generateAltText(imageDesc);
-    setAltTextResult(res.data.altText);
+    setLoadingStates(prev => ({ ...prev, altText: true }));
+    try {
+      const res = await generateAltText(imageDesc);
+      setAltTextResult(res.data.altText);
+      showToast("Alt text generated", "success");
+    } catch (error) {
+      showToast("Failed to generate alt text", "error");
+    } finally {
+      setLoadingStates(prev => ({ ...prev, altText: false }));
+    }
   };
 
   const handleRunModeration = async (e) => {
     e.preventDefault();
     if (!moderationText) return;
-    const [mRes, fRes] = await Promise.all([
-      moderateContent(moderationText),
-      detectFakeAccount()
-    ]);
-    setModerationResult(mRes.data);
-    setFakeAccountResult(fRes.data);
+    setLoadingStates(prev => ({ ...prev, moderation: true }));
+    try {
+      const [mRes, fRes] = await Promise.all([
+        moderateContent(moderationText),
+        detectFakeAccount()
+      ]);
+      setModerationResult(mRes.data);
+      setFakeAccountResult(fRes.data);
+      showToast("Analysis complete", "success");
+    } catch (error) {
+      showToast("Failed to run analysis", "error");
+    } finally {
+      setLoadingStates(prev => ({ ...prev, moderation: false }));
+    }
   };
 
   return (
@@ -194,9 +246,10 @@ export default function AiStudioPage() {
 
               <button
                 type="submit"
-                className="w-full py-3 bg-gradient-to-r from-primary-500 to-purple-600 text-white font-bold text-sm rounded-xl shadow-lg hover:scale-[1.01] transition-all"
+                disabled={loadingStates.caption}
+                className="w-full py-3 bg-gradient-to-r from-primary-500 to-purple-600 text-white font-bold text-sm rounded-xl shadow-lg hover:scale-[1.01] transition-all flex items-center justify-center gap-2"
               >
-                Generate Caption & Hashtags
+                {loadingStates.caption ? <Loader2 className="w-5 h-5 animate-spin" /> : "Generate Caption & Hashtags"}
               </button>
             </form>
           </div>
@@ -268,9 +321,10 @@ export default function AiStudioPage() {
 
               <button
                 type="submit"
-                className="w-full py-3 bg-gradient-to-r from-primary-500 to-purple-600 text-white font-bold text-sm rounded-xl shadow-lg hover:scale-[1.01] transition-all"
+                disabled={loadingStates.bio}
+                className="w-full py-3 bg-gradient-to-r from-primary-500 to-purple-600 text-white font-bold text-sm rounded-xl shadow-lg hover:scale-[1.01] transition-all flex items-center justify-center gap-2"
               >
-                Generate Bio & Handles
+                {loadingStates.bio ? <Loader2 className="w-5 h-5 animate-spin" /> : "Generate Bio & Usernames"}
               </button>
             </form>
           </div>

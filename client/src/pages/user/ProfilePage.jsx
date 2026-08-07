@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   Heart, 
@@ -42,6 +42,7 @@ const ProfilePage = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isOptionsModalOpen, setIsOptionsModalOpen] = useState(false);
   const { showToast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -194,7 +195,7 @@ const ProfilePage = () => {
                     <Button variant="secondary" onClick={() => setIsEditModalOpen(true)} className="h-9 font-semibold text-sm flex-1 sm:flex-none">
                       Edit profile
                     </Button>
-                    <Button variant="ghost" className="h-9 w-9 p-0 shrink-0" onClick={() => showToast('Settings coming soon', 'info')}>
+                    <Button variant="ghost" className="h-9 w-9 p-0 shrink-0" onClick={() => navigate('/app/settings')}>
                       <Settings className="w-5 h-5" />
                     </Button>
                   </>

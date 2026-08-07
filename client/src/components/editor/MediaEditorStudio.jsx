@@ -194,20 +194,21 @@ export function MediaEditorStudio({ isOpen, onClose, mediaSrc, mediaType = 'imag
   // Export Action
   const handleExport = () => {
     setIsExporting(true);
-    setExportProgress(10);
+    let progress = 10;
+    setExportProgress(progress);
 
     const interval = setInterval(() => {
-      setExportProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsExporting(false);
-          toast({ variant: 'success', title: `Media Exported cleanly in ${exportQuality}` });
-          if (onSave) onSave({ filterStyle: getFilterStyle(), exportQuality, exportFormat });
-          onClose();
-          return 100;
-        }
-        return prev + 30;
-      });
+      progress += 30;
+      if (progress >= 100) {
+        clearInterval(interval);
+        setExportProgress(100);
+        setIsExporting(false);
+        toast({ variant: 'success', title: `Media Exported cleanly in ${exportQuality}` });
+        if (onSave) onSave({ filterStyle: getFilterStyle(), exportQuality, exportFormat });
+        onClose();
+      } else {
+        setExportProgress(progress);
+      }
     }, 300);
   };
 

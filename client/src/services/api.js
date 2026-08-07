@@ -19,4 +19,20 @@ api.interceptors.request.use(
   }
 );
 
+// Add interceptor to handle 401 responses globally
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      // Clear token and force reload to redirect to login
+      localStorage.removeItem('token');
+      // Use window.location.href instead of react-router here because this is outside React context
+      if (!window.location.pathname.includes('/auth/login')) {
+        window.location.href = '/auth/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default api;

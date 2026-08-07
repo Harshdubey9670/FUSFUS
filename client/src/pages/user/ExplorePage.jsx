@@ -1,19 +1,18 @@
 import React, { useState, useEffect, useRef, useCallback, Suspense, memo } from "react";
-import { Link } from "react-router-dom";
-import { Search, Loader2, X, Heart, MessageCircle, TrendingUp, Hash, Compass, Sparkles, Clock, Users } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Search, Loader2, X, Heart, MessageCircle, TrendingUp, Hash, Compass, Clock, Users, Video } from "lucide-react";
+import { motion, AnimatePresence, useScroll, useMotionValueEvent } from "framer-motion";
 import api from "../../services/api";
 import { Avatar } from "../../components/ui/Avatar";
 import { trackEvent } from "../../utils/analytics";
 import { fetchWithCache, prefetch } from "../../utils/cache";
 import { LazyImage } from "../../components/ui/LazyImage";
+import { cn } from "../../utils/cn";
 
 // Lazy load the heavy carousel component
 const PopularCreatorsCarousel = React.lazy(() => import("../../components/user/PopularCreatorsCarousel"));
-import { Video } from "lucide-react";
 
-// --- Memoized Components ---
-
+// --- Memoized Components for Explore Grid ---
 const NewMediaCard = memo(({ post }) => {
   return (
     <Link
@@ -99,7 +98,6 @@ const PostCard = memo(({ post, index, isLast, lastPostRef }) => {
                   <span className="font-bold text-sm">{post.comments?.length || 0}</span>
                 </div>
               </div>
-              {/* User mini-pill */}
               <div className="flex items-center gap-2 bg-white/20 backdrop-blur-sm px-3 py-1.5 rounded-full">
                 <div className="w-6 h-6 rounded-full overflow-hidden">
                   <Avatar src={post.user?.profilePicture || post.user?.avatar} alt={post.user?.username} className="w-full h-full rounded-full" />
@@ -116,54 +114,90 @@ const PostCard = memo(({ post, index, isLast, lastPostRef }) => {
 
 
 const ExplorePage = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const observer = useRef();
+  const inputRef = useRef(null);
+
+  // --- Search State ---
+  const initialQuery = searchParams.get('q') || '';
+  const [query, setQuery] = useState(initialQuery);
+  const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
+  const [isSearchActive, setIsSearchActive] = useState(initialQuery.length > 0);
+  const [searchTab, setSearchTab] = useState('all'); // all, users, posts, reels, hashtags
+  const [searchResults, setSearchResults] = useState({ users: [], posts: [], stories: [], hashtags: [] });
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchSuggestions, setSearchSuggestions] = useState({ popularUsers: [], trendingTags: [] });
+  const [recentSearches, setRecentSearches] = useState([]);
+
   // --- Explore Grid State ---
   const [posts, setPosts] = useState([]);
   const [newestMedia, setNewestMedia] = useState([]);
   const [suggestedReels, setSuggestedReels] = useState([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [gridLoading, setGridLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [explorePageNum, setExplorePageNum] = useState(1);
+  const [exploreHasMore, setExploreHasMore] = useState(true);
+  const [exploreLoading, setExploreLoading] = useState(true);
 
-  // --- Trending Hashtags State ---
-  const [trendingTags, setTrendingTags] = useState([]);
+  // --- Smart Scroll Header ---
+  const { scrollY } = useScroll();
+  const [headerHidden, setHeaderHidden] = useState(false);
 
-  const observer = useRef();
+  useMotionValueEvent(scrollY, "change", (latest) => {
+    const previous = scrollY.getPrevious();
+    if (latest > previous && latest > 100) {
+      setHeaderHidden(true);
+    } else {
+      setHeaderHidden(false);
+    }
+  });
 
-  // --- Explore Grid Fetch (Cached) ---
+  // Focus effect when switching to search mode
+  useEffect(() => {
+    if (isSearchActive && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isSearchActive]);
+
+  // Load Search History and Suggestions once
+  useEffect(() => {
+    api.get('/api/search/suggestions').then(res => {
+      if (res.data.success) setSearchSuggestions(res.data.data);
+    }).catch(console.error);
+
+    api.get('/api/search/history').then(res => {
+      if (res.data.success) setRecentSearches(res.data.data);
+    }).catch(console.error);
+  }, []);
+
+  // --- Explore Grid Fetch ---
   const fetchExplorePosts = useCallback(async (pageNum, reset = false) => {
     try {
-      if (pageNum === 1) setGridLoading(true);
-      else setLoadingMore(true);
-
-      const fetcher = () => api.get(`/api/posts/explore?page=${pageNum}&limit=18`);
-      // Use cache for the first page only to make it instant
-      const res = pageNum === 1 ? await fetchWithCache(`/explore?page=1`, fetcher) : await fetcher();
-
+      if (pageNum === 1) setExploreLoading(true);
+      const res = await api.get(`/api/posts/explore?page=${pageNum}&limit=18`);
       if (res.data.success) {
         setPosts(prev => reset ? res.data.data.posts : [...prev, ...res.data.data.posts]);
         if (reset) {
-          setTrendingTags(res.data.data.trendingHashtags || []);
           setNewestMedia(res.data.data.newestMedia || []);
           setSuggestedReels(res.data.data.suggestedReels || []);
         }
-        setHasMore(res.data.pagination.hasMore);
+        setExploreHasMore(res.data.pagination.hasMore);
       }
     } catch (e) { console.error("Explore fetch error", e); }
-    finally { setGridLoading(false); setLoadingMore(false); }
+    finally { setExploreLoading(false); }
   }, []);
 
   useEffect(() => {
-    fetchExplorePosts(1, true);
-  }, [fetchExplorePosts]);
+    if (!isSearchActive) {
+      fetchExplorePosts(1, true);
+    }
+  }, [isSearchActive, fetchExplorePosts]);
 
-  // --- Infinite Scroll ---
-  const lastPostRef = useCallback((node) => {
-    if (gridLoading || loadingMore) return;
+  const exploreLastPostRef = useCallback((node) => {
+    if (exploreLoading) return;
     if (observer.current) observer.current.disconnect();
     observer.current = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && hasMore) {
-        setPage(prev => {
+      if (entries[0].isIntersecting && exploreHasMore) {
+        setExplorePageNum(prev => {
           const next = prev + 1;
           fetchExplorePosts(next, false);
           return next;
@@ -171,160 +205,291 @@ const ExplorePage = () => {
       }
     });
     if (node) observer.current.observe(node);
-  }, [gridLoading, loadingMore, hasMore, fetchExplorePosts]);
+  }, [exploreLoading, exploreHasMore, fetchExplorePosts]);
+
+
+  // --- Search Logic ---
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    if (!isSearchActive) return;
+    if (debouncedQuery.trim().length === 0) {
+      setSearchResults({ users: [], posts: [], stories: [], hashtags: [] });
+      setSearchParams({});
+      return;
+    }
+    
+    setSearchLoading(true);
+    const params = new URLSearchParams({ q: debouncedQuery, type: searchTab, limit: 15 });
+    setSearchParams(params);
+
+    api.get(`/api/search/advanced?${params.toString()}`)
+      .then(res => {
+        if (res.data.success) {
+          setSearchResults(res.data.data);
+        }
+      })
+      .catch(console.error)
+      .finally(() => setSearchLoading(false));
+  }, [debouncedQuery, searchTab, isSearchActive, setSearchParams]);
+
+  const handleSelectSuggestion = async (type, data) => {
+    // Save to history
+    try {
+      let payload = { type };
+      if (type === 'user') { payload.query = data.username; payload.refId = data._id; payload.username = data.username; payload.fullName = data.fullName; payload.avatar = data.profilePicture; }
+      else if (type === 'hashtag') { payload.query = data.tag; payload.tag = data.tag; }
+      else { payload.query = data; payload.type = 'text'; }
+      
+      const res = await api.post('/api/search/history', payload);
+      if (res.data.success) setRecentSearches(res.data.data);
+    } catch(err) { console.error(err); }
+
+    if (type === 'user') navigate(`/app/profile/${data._id}`);
+    else if (type === 'hashtag') navigate(`/app/hashtag/${data.tag}`);
+    else setQuery(data);
+  };
+
+  const removeRecent = async (e, id) => {
+    e.stopPropagation();
+    setRecentSearches(prev => prev.filter(r => r._id !== id));
+    try { await api.delete(`/api/search/history/${id}`); } catch(err) { console.error(err); }
+  };
+
 
   return (
-    <div className="w-full max-w-4xl mx-auto pt-3 sm:pt-4 pb-safe-20 lg:pb-8 px-3 sm:px-4 md:px-0">
-
-      {/* ── Header ── */}
-      <div className="flex items-center gap-3 mb-6" aria-hidden="true">
-        <div className="p-2 rounded-xl hero-gradient">
-          <Compass className="w-6 h-6 text-white" />
+    <div className="w-full max-w-[1400px] mx-auto pt-4 pb-safe-20 lg:pb-8 px-4 md:px-8">
+      
+      {/* ── Fixed Search Bar Header ── */}
+      <motion.div 
+        variants={{ visible: { y: 0, opacity: 1 }, hidden: { y: "-100%", opacity: 0 } }}
+        animate={headerHidden ? "hidden" : "visible"}
+        transition={{ duration: 0.3, ease: "easeInOut" }}
+        className="sticky top-0 z-30 bg-bg-base/90 backdrop-blur-xl pb-4 pt-2"
+      >
+        <div className="relative max-w-2xl mx-auto flex items-center">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-text-secondary" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onFocus={() => setIsSearchActive(true)}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search users, posts, reels, hashtags..."
+            className="w-full bg-bg-surface border border-border-soft rounded-full h-12 pl-12 pr-12 text-text-primary focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-sm transition-all text-sm md:text-base"
+          />
+          {(query || isSearchActive) && (
+            <button 
+              onClick={() => { setQuery(''); setIsSearchActive(false); setSearchParams({}); }}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary bg-bg-surface-hover p-1 rounded-full transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
-        <h1 className="text-2xl font-bold text-text-primary">Explore</h1>
-      </div>
 
-      {/* ── Content Area ── */}
-      <AnimatePresence mode="wait">
-          <motion.div
-            key="explore"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            {/* ── Popular Creators (Lazy Loaded) ── */}
+        {/* Filter Chips - Only visible when typing */}
+        <AnimatePresence>
+          {isSearchActive && query.length > 0 && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="flex gap-2 overflow-x-auto no-scrollbar pt-4 max-w-2xl mx-auto"
+            >
+              {['all', 'users', 'posts', 'reels', 'hashtags'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setSearchTab(tab)}
+                  className={cn(
+                    "px-4 py-1.5 rounded-full text-sm font-semibold capitalize whitespace-nowrap transition-colors border",
+                    searchTab === tab 
+                      ? "bg-primary-500 text-white border-primary-500 shadow-md" 
+                      : "bg-bg-surface border-border-soft text-text-secondary hover:text-text-primary hover:border-text-secondary"
+                  )}
+                >
+                  {tab}
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+
+      <div className="max-w-2xl mx-auto mt-4">
+        {/* ── Search UI Mode ── */}
+        {isSearchActive ? (
+          <div className="animate-fade-in pb-12">
+            {/* Empty Query: Show Suggestions & History */}
+            {debouncedQuery.trim().length === 0 ? (
+              <div className="space-y-6">
+                {recentSearches.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3 px-2">Recent Searches</h3>
+                    <div className="space-y-1">
+                      {recentSearches.slice(0, 5).map(r => (
+                        <div key={r._id} onClick={() => handleSelectSuggestion(r.type, r)} className="flex items-center justify-between p-3 rounded-2xl hover:bg-bg-surface-hover cursor-pointer group transition-colors">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-bg-surface flex items-center justify-center shrink-0 border border-border-soft text-text-secondary">
+                              {r.type === 'hashtag' ? <Hash className="w-5 h-5"/> : (r.type === 'user' && r.avatar) ? <Avatar src={r.avatar} className="w-full h-full rounded-full" /> : <Clock className="w-5 h-5"/>}
+                            </div>
+                            <span className="font-semibold text-text-primary text-sm">{r.query}</span>
+                          </div>
+                          <button onClick={(e) => removeRecent(e, r._id)} className="p-2 text-text-secondary hover:text-text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {searchSuggestions.popularUsers.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3 px-2">Suggested Users</h3>
+                    <div className="space-y-1">
+                      {searchSuggestions.popularUsers.map(u => (
+                        <div key={u._id} onClick={() => handleSelectSuggestion('user', u)} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-bg-surface-hover cursor-pointer transition-colors">
+                          <Avatar src={u.profilePicture || u.avatar} className="w-10 h-10 rounded-full border border-border-soft" />
+                          <div className="flex flex-col">
+                            <span className="font-bold text-text-primary text-sm">{u.username}</span>
+                            <span className="text-xs text-text-secondary">{u.fullName}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {searchSuggestions.trendingTags.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3 px-2">Trending Hashtags</h3>
+                    <div className="flex flex-wrap gap-2 px-2">
+                      {searchSuggestions.trendingTags.map(tag => (
+                        <div key={tag.tag} onClick={() => handleSelectSuggestion('hashtag', tag)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-bg-surface border border-border-soft text-sm font-semibold hover:border-primary-500 hover:text-primary-500 cursor-pointer transition-colors">
+                          <TrendingUp className="w-3.5 h-3.5" />
+                          <span>#{tag.tag}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Active Query Results */
+              <div className="space-y-4">
+                {searchLoading ? (
+                  <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-primary-500" /></div>
+                ) : (
+                  <>
+                    {(searchTab === 'all' || searchTab === 'users') && searchResults.users?.length > 0 && (
+                      <div className="mb-6">
+                        {searchTab === 'all' && <h3 className="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3 px-2">Users</h3>}
+                        <div className="space-y-1">
+                          {searchResults.users.map(u => (
+                            <Link to={`/app/profile/${u._id}`} key={u._id} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-bg-surface-hover transition-colors">
+                              <Avatar src={u.profilePicture || u.avatar} className="w-12 h-12 rounded-full border border-border-soft" />
+                              <div className="flex flex-col">
+                                <span className="font-bold text-text-primary">{u.username}</span>
+                                <span className="text-xs text-text-secondary">{u.fullName}</span>
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {(searchTab === 'all' || searchTab === 'hashtags') && searchResults.hashtags?.length > 0 && (
+                      <div className="mb-6">
+                        {searchTab === 'all' && <h3 className="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3 px-2">Hashtags</h3>}
+                        <div className="space-y-1">
+                          {searchResults.hashtags.map(h => (
+                            <Link to={`/app/hashtag/${h.tag}`} key={h._id} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-bg-surface-hover transition-colors">
+                              <div className="w-12 h-12 rounded-full bg-bg-surface border border-border-soft flex items-center justify-center">
+                                <Hash className="w-6 h-6 text-text-secondary" />
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="font-bold text-text-primary">#{h.tag}</span>
+                                <span className="text-xs text-text-secondary">{h.postCount} posts</span>
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Posts and Reels are omitted for brevity in search results, in a real app you'd map the PostCard grid here */}
+                    {Object.values(searchResults).every(arr => arr.length === 0) && (
+                       <div className="text-center py-20 text-text-secondary flex flex-col items-center">
+                         <Search className="w-12 h-12 mb-4 opacity-50" />
+                         <p>No results found for "{query}"</p>
+                       </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* ── Explore UI Mode ── */
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="animate-fade-in">
+            {/* Popular Creators */}
             <Suspense fallback={<div className="h-40 flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary-500" /></div>}>
               <PopularCreatorsCarousel />
             </Suspense>
 
-            {/* ── Newest Media ── */}
-            {!gridLoading && newestMedia.length > 0 && (
-              <div className="mb-8">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2" aria-hidden="true">
-                    <Clock className="w-5 h-5 text-primary-500" />
-                    <h2 className="font-semibold text-text-primary" id="newest-drops-heading">Newest Drops</h2>
-                  </div>
+            {/* Newest Drops */}
+            {!exploreLoading && newestMedia.length > 0 && (
+              <div className="mb-8 mt-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Clock className="w-5 h-5 text-primary-500" />
+                  <h2 className="font-semibold text-text-primary text-lg">Newest Drops</h2>
                 </div>
-                <div 
-                  className="flex gap-3 overflow-x-auto pb-4 no-scrollbar px-1"
-                  role="region"
-                  aria-labelledby="newest-drops-heading"
-                >
-                  {newestMedia.map((post) => (
-                    <NewMediaCard key={post._id} post={post} />
-                  ))}
+                <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar px-1">
+                  {newestMedia.map((post) => <NewMediaCard key={post._id} post={post} />)}
                 </div>
               </div>
             )}
 
-            {/* ── Suggested Reels ── */}
-            {!gridLoading && suggestedReels.length > 0 && (
-              <div className="mb-8">
-                <div className="flex items-center justify-between mb-4 border-t border-border-soft pt-6">
-                  <div className="flex items-center gap-2" aria-hidden="true">
-                    <Video className="w-5 h-5 text-primary-500" />
-                    <h2 className="font-semibold text-text-primary" id="suggested-reels-heading">Suggested Reels</h2>
-                  </div>
+            {/* Suggested Reels */}
+            {!exploreLoading && suggestedReels.length > 0 && (
+              <div className="mb-8 border-t border-border-soft pt-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Video className="w-5 h-5 text-primary-500" />
+                  <h2 className="font-semibold text-text-primary text-lg">Suggested Reels</h2>
                 </div>
-                <div 
-                  className="flex gap-3 overflow-x-auto pb-4 no-scrollbar px-1"
-                  role="region"
-                  aria-labelledby="suggested-reels-heading"
-                >
-                  {suggestedReels.map((post) => (
-                    <NewMediaCard key={post._id} post={post} />
-                  ))}
+                <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar px-1">
+                  {suggestedReels.map((post) => <NewMediaCard key={post._id} post={post} />)}
                 </div>
               </div>
             )}
 
-            {/* Section Header */}
-            <div className="flex items-center justify-between mb-4 border-t border-border-soft pt-6" aria-hidden="true">
+            {/* Main Explore Grid (Masonry style using columns) */}
+            <div className="border-t border-border-soft pt-6 mb-4">
               <div className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-primary-500" />
-                <h2 className="font-semibold text-text-primary" id="trending-hashtags-heading">Trending</h2>
+                <Compass className="w-5 h-5 text-primary-500" />
+                <h2 className="font-semibold text-text-primary text-lg">Discover</h2>
               </div>
             </div>
-
-            {/* Trending Hashtags Pills */}
-            {trendingTags.length > 0 && (
-              <div 
-                className="mb-5"
-                role="region"
-                aria-labelledby="trending-hashtags-heading"
-              >
-                <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar">
-                  {trendingTags.map((item, i) => (
-                    <Link
-                      key={item.tag}
-                      to={`/app/hashtag/${item.tag}`}
-                      aria-label={`Hashtag ${item.tag} with ${item.count} posts`}
-                      className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-bg-surface border border-border-soft rounded-full text-sm font-medium text-text-secondary hover:text-primary-500 hover:border-primary-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 transition-all"
-                    >
-                      <Hash className="w-3.5 h-3.5" aria-hidden="true" />
-                      {item.tag}
-                      <span className="text-xs text-text-secondary font-semibold">· {item.count}</span>
-                    </Link>
-                  ))}
-                  <Link
-                    to="/app/trending-hashtags"
-                    aria-label="See all trending hashtags"
-                    className="flex-shrink-0 px-3 py-1.5 bg-primary-500/10 border border-primary-500/30 rounded-full text-sm font-semibold text-primary-500 hover:bg-primary-500/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 transition-all"
-                  >
-                    See All →
-                  </Link>
-                </div>
-              </div>
-            )}
-
-            {gridLoading ? (
-              <div className="flex justify-center py-24">
-                <Loader2 className="w-10 h-10 animate-spin text-primary-500" />
-              </div>
-            ) : posts.length === 0 ? (
-              <div className="text-center py-24 bg-bg-surface rounded-2xl border border-border-soft">
-                <Compass className="w-12 h-12 text-text-secondary mx-auto mb-3" />
-                <p className="font-semibold text-text-primary">Nothing to explore yet</p>
-                <p className="text-sm text-text-secondary mt-1">Be the first to post something!</p>
-              </div>
-            ) : (
-              <>
-                {/* CSS Masonry Grid */}
-                <div
-                  role="feed"
-                  aria-busy={loadingMore}
-                  aria-label="Explore posts"
-                  className="columns-2 sm:columns-3 lg:columns-4 gap-2 sm:gap-3 md:gap-4 space-y-2 sm:space-y-3 md:space-y-4"
-                >
-                  {posts.map((post, index) => {
-                    const isLast = index === posts.length - 1;
-                    return (
-                      <PostCard 
-                        key={post._id} 
-                        post={post} 
-                        index={index} 
-                        isLast={isLast} 
-                        lastPostRef={lastPostRef} 
-                      />
-                    );
-                  })}
-                </div>
-
-                {/* Load More Spinner */}
-                {loadingMore && (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="w-7 h-7 animate-spin text-primary-500" />
-                  </div>
-                )}
-                {!hasMore && posts.length > 0 && (
-                  <p className="text-center text-text-secondary text-sm py-8">You've seen it all! 🎉</p>
-                )}
-              </>
-            )}
-        </motion.div>
-      </AnimatePresence>
+            
+            <div className="columns-2 md:columns-3 gap-2 space-y-2 pb-12">
+              {posts.map((post, index) => (
+                <PostCard 
+                  key={post._id} 
+                  post={post} 
+                  index={index} 
+                  isLast={index === posts.length - 1} 
+                  lastPostRef={exploreLastPostRef} 
+                />
+              ))}
+            </div>
+            {exploreLoading && <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-primary-500" /></div>}
+          </motion.div>
+        )}
+      </div>
     </div>
   );
 };

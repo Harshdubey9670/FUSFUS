@@ -27,7 +27,9 @@ import {
   Play,
   Maximize2,
   Compass,
-  Smile
+  Smile,
+  Lock,
+  ShieldCheck
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useToast } from '../../components/ui/Toast';
@@ -36,6 +38,7 @@ import { ImageFilterModal, FILTER_PRESETS } from '../../components/ui/ImageFilte
 import { MediaEditorStudio } from '../../components/editor/MediaEditorStudio';
 import { ArLensFramework, BUILTIN_AR_LENSES } from '../../services/ArLensFramework';
 import api from '../../services/api';
+import { useEdgeSwipe } from '../../hooks/useEdgeSwipe';
 
 export default function CameraPage() {
   const navigate = useNavigate();
@@ -58,6 +61,7 @@ export default function CameraPage() {
   const [aspectRatio, setAspectRatio] = useState('9:16'); // '1:1' | '4:5' | '9:16' | '16:9'
   const [resolution, setResolution] = useState('1080p'); // '720p' | '1080p' | '4k'
   const [frameRate, setFrameRate] = useState('30fps'); // '24fps' | '30fps' | '60fps'
+  const [cameraError, setCameraError] = useState(null);
   
   // Timers & Burst Mode
   const [timerSeconds, setTimerSeconds] = useState(0); // 0, 3, 10
@@ -79,8 +83,17 @@ export default function CameraPage() {
   const [capturedMedia, setCapturedMedia] = useState(null); // { blob, url, type }
   const [caption, setCaption] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [isSavingToVault, setIsSavingToVault] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [focusPoint, setFocusPoint] = useState(null); // { x, y }
+
+  // Handle Swipe Left to Exit Camera
+  useEdgeSwipe({
+    onSwipeLeft: () => {
+      // Exit the camera back to feed
+      navigate('/app');
+    }
+  });
 
   // Recorded video chunks
   const recordedChunks = useRef([]);
@@ -103,13 +116,38 @@ export default function CameraPage() {
     return () => stopCamera();
   }, [cameraFacing, resolution, frameRate]);
 
+  // Sync Hardware Torch/Flash with flashMode State
+  useEffect(() => {
+    if (stream) {
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack && typeof videoTrack.getCapabilities === 'function') {
+        const capabilities = videoTrack.getCapabilities();
+        // Only attempt to turn on torch if device supports it (usually rear camera only)
+        if (capabilities.torch) {
+          try {
+            const isTorchOn = flashMode === 'on' || flashMode === 'auto';
+            videoTrack.applyConstraints({
+              advanced: [{ torch: isTorchOn }]
+            });
+          } catch (err) {
+            console.warn("Failed to apply torch constraints", err);
+          }
+        }
+      }
+    }
+  }, [flashMode, stream]);
+
   const startCamera = async () => {
     try {
       if (stream) {
         stream.getTracks().forEach(track => track.stop());
       }
-      const targetWidth = resolution === '4k' ? 3840 : resolution === '720p' ? 1280 : 1920;
-      const targetHeight = resolution === '4k' ? 2160 : resolution === '720p' ? 720 : 1080;
+      const isPortrait = window.innerHeight > window.innerWidth;
+      const baseWidth = resolution === '4k' ? 3840 : resolution === '720p' ? 1280 : 1920;
+      const baseHeight = resolution === '4k' ? 2160 : resolution === '720p' ? 720 : 1080;
+      
+      const targetWidth = isPortrait ? baseHeight : baseWidth;
+      const targetHeight = isPortrait ? baseWidth : baseHeight;
       const fps = frameRate === '60fps' ? 60 : frameRate === '24fps' ? 24 : 30;
 
       const mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -122,11 +160,13 @@ export default function CameraPage() {
         audio: true
       });
       setStream(mediaStream);
+      setCameraError(null);
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
       }
     } catch (err) {
       console.warn("Camera fallback stream initialized", err);
+      setCameraError("Camera permission denied or device not available. Please allow camera access in your browser.");
     }
   };
 
@@ -279,6 +319,38 @@ export default function CameraPage() {
     }
   };
 
+  const handleSaveToVault = async () => {
+    if (!capturedMedia) return;
+    setIsSavingToVault(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', capturedMedia.blob, `snap_vault_${Date.now()}.${capturedMedia.type === 'video' ? 'webm' : 'jpg'}`);
+
+      const uploadRes = await api.post('/api/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      if (!uploadRes.data.success) throw new Error('Upload failed');
+
+      const { url, format } = uploadRes.data.data;
+      const mediaType = format === 'mp4' || format === 'webm' || capturedMedia.type === 'video' ? 'video' : 'image';
+
+      await api.post('/api/vault/memories', {
+        title: `Memory - ${new Date().toLocaleDateString()}`,
+        mediaUrl: url,
+        mediaType,
+        isPrivate: false,
+      });
+
+      showToast('Saved to Vault!', 'success');
+      handleRetake();
+    } catch (err) {
+      showToast('Failed to save to Vault', 'error');
+    } finally {
+      setIsSavingToVault(false);
+    }
+  };
+
   const handleRetake = () => {
     setCapturedMedia(null);
     setCaption('');
@@ -287,12 +359,17 @@ export default function CameraPage() {
   return (
     <div className="relative w-full max-w-4xl mx-auto min-h-[calc(100vh-80px)] flex flex-col items-center justify-between bg-black rounded-3xl overflow-hidden shadow-2xl border border-white/10 my-2 select-none">
 
-      {/* Screen Overlay Flash Effect */}
-      {flashMode === 'on' && <div className="absolute inset-0 z-50 bg-white opacity-50 pointer-events-none animate-pulse" />}
+      {/* Screen Overlay Flash Effect (Ring Light Fallback for Front Camera) */}
+      {flashMode === 'on' && cameraFacing === 'user' && !capturedMedia && (
+        <div 
+          className="absolute inset-0 z-50 pointer-events-none transition-all duration-300"
+          style={{ boxShadow: 'inset 0 0 120px 80px rgba(255,255,255,0.95)' }}
+        />
+      )}
 
       {/* Captured Media Preview Mode */}
       {capturedMedia ? (
-        <div className="relative w-full h-full flex flex-col justify-between p-6 bg-black">
+        <div className="relative w-full flex-1 flex flex-col justify-between p-6 bg-black">
           <div className="relative flex-1 rounded-3xl overflow-hidden bg-black flex items-center justify-center">
             {capturedMedia.type === 'video' ? (
               <video src={capturedMedia.url} controls autoPlay loop style={{ filter: appliedFilter.filterStyle }} className="w-full h-full object-contain transition-all" />
@@ -330,27 +407,14 @@ export default function CameraPage() {
             </div>
           </div>
 
-          {/* Caption Input & Share Action Controls */}
+          {/* Share Action Controls */}
           <div className="mt-4 space-y-4">
-            <div className="relative">
-              <MentionTextarea 
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-                placeholder="Add a caption to your snap..."
-                className="w-full p-4 rounded-2xl glass text-white placeholder-white/60 focus:outline-none text-sm resize-none min-h-[70px]"
-              />
-              <button 
-                type="button"
-                onClick={() => setCaption("Captured with InstaSnap AI Studio ✨📸")}
-                className="absolute bottom-3 right-3 flex items-center gap-1 px-3 py-1 rounded-full hero-gradient text-white text-xs font-bold shadow-md"
-              >
-                <Sparkles className="w-3.5 h-3.5" /> AI
-              </button>
-            </div>
-
-            <div className="flex gap-4">
-              <Button onClick={handleRetake} variant="ghost" className="flex-1 text-white rounded-2xl">
+            <div className="flex gap-2 sm:gap-4">
+              <Button onClick={handleRetake} variant="ghost" className="flex-1 text-white rounded-2xl hidden sm:flex">
                 Discard
+              </Button>
+              <Button onClick={handleSaveToVault} variant="outline" className="flex-1 border-white/20 text-white rounded-2xl bg-white/10 hover:bg-white/20" isLoading={isSavingToVault}>
+                Save to Vault <Lock className="w-4 h-4 ml-2" />
               </Button>
               <Button onClick={handlePublish} variant="gradient" className="flex-1 rounded-2xl" isLoading={isUploading}>
                 Send Snap <Send className="w-4 h-4 ml-2" />
@@ -360,15 +424,26 @@ export default function CameraPage() {
         </div>
       ) : (
         /* Live WebRTC Camera Screen (Module 1) */
-        <div className="relative w-full h-full flex flex-col justify-between overflow-hidden cursor-crosshair" onClick={handleTapToFocus}>
+        <div className="relative w-full flex-1 flex flex-col justify-between overflow-hidden cursor-crosshair" onClick={handleTapToFocus}>
           
+          {cameraError ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8 z-10 bg-black/80 backdrop-blur-sm">
+              <Camera className="w-16 h-16 text-red-500 mb-4 opacity-80" />
+              <h2 className="text-xl font-bold text-white mb-2">Camera Access Denied</h2>
+              <p className="text-text-secondary max-w-sm">{cameraError}</p>
+              <Button onClick={() => startCamera()} variant="outline" className="mt-6 border-white/20 text-white hover:bg-white/10">
+                Retry Connection
+              </Button>
+            </div>
+          ) : null}
+
           {/* Real-time WebRTC Video Element */}
           <video 
             ref={videoRef}
             autoPlay
             playsInline
             muted
-            className={`w-full h-full object-cover transition-all ${cameraFacing === 'user' ? 'scale-x-[-1]' : ''} ${nightMode ? 'contrast-125 brightness-125' : ''}`}
+            className={`absolute inset-0 z-0 w-full h-full object-cover transition-all ${cameraFacing === 'user' ? 'scale-x-[-1]' : ''} ${nightMode ? 'contrast-125 brightness-125' : ''}`}
             style={{ 
               filter: `brightness(${100 + exposureEv * 15}%) ${selectedLens.css}`,
               transform: `scale(${zoomLevel})`
@@ -549,22 +624,35 @@ export default function CameraPage() {
               })}
             </div>
 
-            {/* Shutter Capture Button */}
-            {mode === 'photo' ? (
+            {/* Shutter Capture Button & Vault Shortcut */}
+            <div className="flex items-center justify-center gap-10 w-full mb-2">
               <button 
-                onClick={capturePhoto}
-                className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center shadow-2xl hover:scale-105 active:scale-95 transition-transform"
+                onClick={() => navigate('/app/vault')}
+                className="w-12 h-12 rounded-full glass border border-white/30 flex flex-col items-center justify-center text-white hover:bg-white/20 transition-all shadow-xl backdrop-blur-md"
               >
-                <div className="w-16 h-16 rounded-full bg-white shadow-glow" />
+                <ShieldCheck className="w-5 h-5 mb-0.5" />
+                <span className="text-[8px] font-black tracking-widest uppercase">Vault</span>
               </button>
-            ) : (
-              <button 
-                onClick={isRecording ? stopRecording : startRecording}
-                className={`w-20 h-20 rounded-full border-4 ${isRecording ? 'border-red-500 animate-pulse' : 'border-white'} flex items-center justify-center shadow-2xl hover:scale-105 transition-transform`}
-              >
-                <div className={`rounded-full ${isRecording ? 'w-8 h-8 bg-red-500' : 'w-16 h-16 bg-red-500'}`} />
-              </button>
-            )}
+
+              {mode === 'photo' ? (
+                <button 
+                  onClick={capturePhoto}
+                  className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center shadow-2xl hover:scale-105 active:scale-95 transition-transform shrink-0"
+                >
+                  <div className="w-16 h-16 rounded-full bg-white shadow-glow" />
+                </button>
+              ) : (
+                <button 
+                  onClick={isRecording ? stopRecording : startRecording}
+                  className={`w-20 h-20 rounded-full border-4 ${isRecording ? 'border-red-500 animate-pulse' : 'border-white'} flex items-center justify-center shadow-2xl hover:scale-105 transition-transform shrink-0`}
+                >
+                  <div className={`rounded-full ${isRecording ? 'w-8 h-8 bg-red-500' : 'w-16 h-16 bg-red-500'}`} />
+                </button>
+              )}
+
+              {/* Placeholder for symmetry to keep shutter centered */}
+              <div className="w-12 h-12"></div>
+            </div>
 
           </div>
 
@@ -635,7 +723,7 @@ export default function CameraPage() {
           if (editedData?.filterStyle) {
             setAppliedFilter({ filterStyle: editedData.filterStyle, presetName: 'Custom Studio' });
           }
-          toast({ variant: 'success', title: 'Studio Edits Applied to Media!' });
+          showToast('Studio Edits Applied to Media!', 'success');
         }}
       />
 

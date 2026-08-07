@@ -3,6 +3,7 @@
  * Powers AI Assistant, Captions, Hashtags, Bios, Usernames, Post Ideas, Smart Comments,
  * Multilingual Translation, Content Moderation, Spam & Fake Account Detection, and Alt-Text Accessibility.
  */
+const cloudinary = require('../config/cloudinary');
 
 // 1. AI Copilot Chat Assistant
 exports.chatAssistant = async (prompt, conversationHistory = []) => {
@@ -13,6 +14,39 @@ exports.chatAssistant = async (prompt, conversationHistory = []) => {
   ];
   const responseText = responses[Math.floor(Math.random() * responses.length)];
   return { reply: responseText, timestamp: new Date() };
+};
+
+// 1.5. AI Image Generator
+exports.generateImage = async (prompt) => {
+  try {
+    const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true`;
+    
+    // Fetch image as arraybuffer using native fetch
+    const response = await fetch(imageUrl);
+    if (!response.ok) throw new Error("Failed to fetch image from Pollinations");
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Upload to cloudinary
+    const result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: 'snapgram-ai-generated', resource_type: 'image' },
+        (error, result) => {
+          if (result) resolve(result);
+          else reject(error);
+        }
+      );
+      stream.end(buffer);
+    });
+
+    return { 
+      url: result.secure_url, 
+      public_id: result.public_id,
+      prompt
+    };
+  } catch (err) {
+    throw err;
+  }
 };
 
 // 2. AI Caption Generator

@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { motion } from "framer-motion";
-import { Home, Camera, MessageCircle, User, Compass, Bell } from "lucide-react";
+import { Home, Camera, MessageCircle, User, Compass, Bell, ShieldCheck, Film, Search } from "lucide-react";
 import { cn } from "../../utils/cn";
 import { Avatar } from "../ui/Avatar";
 
@@ -10,15 +10,15 @@ export const MobileNav = () => {
   const { user: authUser, unreadNotificationsCount } = useSelector((state) => state.auth);
 
   // Hide on full-screen pages
-  const hiddenPages = ['/reels', '/spotlight', '/camera', '/story/create', '/reels/create'];
+  const hiddenPages = ['/spotlight', '/camera', '/story/create', '/reels/create'];
   const shouldHide = hiddenPages.some(p => location.pathname.includes(p));
   if (shouldHide) return null;
 
   const navItems = [
     { name: "Home",          icon: Home,          path: "/app",             exact: true },
-    { name: "Explore",       icon: Compass,       path: "/app/explore" },
-    { name: "Camera",        icon: Camera,        path: "/app/camera",      isCTA: true },
-    { name: "Alerts",        icon: Bell,          path: "/app/notifications", badge: unreadNotificationsCount },
+    { name: "Search",        icon: Search,        path: "/app/explore" },
+    { name: "Reels",         icon: Film,          path: "/app/reels" },
+    { name: "Vault",         icon: ShieldCheck,   path: "/app/vault" },
     { name: "Profile",       icon: User,          path: "/app/profile",     isProfile: true },
   ];
 

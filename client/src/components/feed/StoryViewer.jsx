@@ -155,7 +155,7 @@ export const StoryViewer = ({ stories, initialUserIndex, onClose }) => {
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, y: 100 }}
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black"
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black"
         drag={!showViewers ? "y" : false} // Disable drag-to-close when viewers modal is open
         dragConstraints={{ top: 0, bottom: 0 }}
         onDragEnd={(e, info) => {

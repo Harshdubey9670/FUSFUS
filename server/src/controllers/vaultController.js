@@ -61,8 +61,11 @@ exports.setVaultPin = async (req, res, next) => {
 // @access  Private
 exports.getMemories = async (req, res, next) => {
   try {
-    const { search, favorite, hidden } = req.query;
+    const { search, favorite, hidden, isPrivate } = req.query;
     const query = { user: req.user.id, isDeleted: false };
+
+    // Default to only fetching public memories unless private tab requests them
+    query.isPrivate = isPrivate === 'true';
 
     if (favorite === 'true') query.isFavorite = true;
     if (hidden === 'true') query.isHidden = true;

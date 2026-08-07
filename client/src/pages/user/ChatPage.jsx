@@ -46,7 +46,7 @@ const ChatPage = () => {
   }, [conversations, searchQuery, authUser]);
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] sm:h-[calc(100dvh-4rem)] w-full overflow-hidden">
+    <div className="flex h-full w-full overflow-hidden">
       {/* Sidebar: Chat List */}
       <div className={`w-full md:w-80 lg:w-96 border-r border-border-soft bg-bg-base flex flex-col ${id ? 'hidden md:flex' : 'flex'}`}>
         {/* Header */}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { 
@@ -26,9 +26,12 @@ import {
 import api from '../../services/api';
 import { useSocketContext } from '../../contexts/SocketContext';
 import EmojiPicker from 'emoji-picker-react';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { useToast } from '../ui/Toast';
 import { SnapViewerModal } from './SnapViewerModal';
+import { ConversationPresenceAvatar } from './ConversationPresenceAvatar';
+import MessageBubble from './MessageBubble';
+import { ImageViewerModal } from './ImageViewerModal';
 
 export default function ChatDetail() {
   const { id: conversationId } = useParams();
@@ -44,6 +47,7 @@ export default function ChatDetail() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [remoteTyping, setRemoteTyping] = useState(false);
+  const [isOtherUserPresent, setIsOtherUserPresent] = useState(false);
   
   // Audio Voice Recording State
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
@@ -57,6 +61,10 @@ export default function ChatDetail() {
   const [showMediaGallery, setShowMediaGallery] = useState(false);
   const [showDisappearingSettings, setShowDisappearingSettings] = useState(false);
   const [disappearingMode, setDisappearingMode] = useState('24h'); // 'off', '24h', '7d'
+  
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [activeImage, setActiveImage] = useState(null);
 
   // Emoji Reactions
   const [reactionMenuMsgId, setReactionMenuMsgId] = useState(null);
@@ -97,11 +105,19 @@ export default function ChatDetail() {
 
   // Socket Event Listeners
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !conversationId) return;
+
+    // Join conversation room for presence
+    socket.emit('joinConversation', conversationId);
 
     const handleNewMessage = (msg) => {
-      if (msg.conversation === conversationId) {
-        setMessages(prev => [...prev, msg]);
+      const msgConvId = typeof msg.conversation === 'object' ? (msg.conversation._id || msg.conversation.toString()) : msg.conversation;
+      if (msgConvId === conversationId) {
+        setMessages(prev => {
+          // Socket Deduping: only check clientMessageId if it exists
+          if (prev.some(m => m._id === msg._id || (msg.clientMessageId && m.clientMessageId === msg.clientMessageId))) return prev;
+          return [...prev, msg];
+        });
       }
     };
 
@@ -125,20 +141,66 @@ export default function ChatDetail() {
       showToast(`📷 @${takenBy} took a screenshot of your snap!`, 'error');
     };
 
+    const handleChatScreenshotNotification = ({ takenBy }) => {
+      showToast(`📷 @${takenBy} took a screenshot of this chat!`, 'error');
+    };
+
+    const handlePresenceUpdate = (userIds) => {
+      if (otherUser && userIds.includes(otherUser._id)) {
+        setIsOtherUserPresent(true);
+      } else {
+        setIsOtherUserPresent(false);
+      }
+    };
+
     socket.on('newMessage', handleNewMessage);
     socket.on('typing', handleTyping);
     socket.on('stopTyping', handleStopTyping);
     socket.on('messagesSeen', handleMessagesSeen);
     socket.on('screenshotNotification', handleScreenshotNotification);
+    socket.on('chatScreenshotNotification', handleChatScreenshotNotification);
+    socket.on('conversationPresenceUpdate', handlePresenceUpdate);
 
     return () => {
+      socket.emit('leaveConversation', conversationId);
       socket.off('newMessage', handleNewMessage);
       socket.off('typing', handleTyping);
       socket.off('stopTyping', handleStopTyping);
       socket.off('messagesSeen', handleMessagesSeen);
       socket.off('screenshotNotification', handleScreenshotNotification);
+      socket.off('chatScreenshotNotification', handleChatScreenshotNotification);
+      socket.off('conversationPresenceUpdate', handlePresenceUpdate);
     };
   }, [socket, conversationId, otherUser]);
+
+  // Global Chat Screenshot Detection
+  useEffect(() => {
+    if (!socket || !otherUser) return;
+
+    const handleKeyDown = (e) => {
+      const isMacScreenshot = e.metaKey && e.shiftKey && ['3', '4', '5', 's'].includes(e.key.toLowerCase());
+      if (e.key === 'PrintScreen' || isMacScreenshot) {
+        // Assuming user has screenshot detection enabled if they are chatting,
+        // (Realistically we would check user settings here, but sending the event is safe)
+        socket.emit('chatScreenshot', { conversationId, receiverId: otherUser._id });
+        showToast("Screenshot captured! Sender may be notified.", "warning");
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        socket.emit('chatScreenshot', { conversationId, receiverId: otherUser._id });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [socket, otherUser, conversationId]);
 
   const handleInputChange = (e) => {
     setNewMessage(e.target.value);
@@ -156,12 +218,24 @@ export default function ChatDetail() {
     }, 2000);
   };
 
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files);
+    setSelectedFiles(prev => [...prev, ...files]);
+  };
+
+  const removeSelectedFile = (index) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSendMessage = async (e) => {
     e?.preventDefault();
-    if (!newMessage.trim() || !otherUser) return;
+    if ((!newMessage.trim() && selectedFiles.length === 0) || !otherUser) return;
 
     const text = newMessage;
+    const currentFiles = [...selectedFiles];
+    
     setNewMessage('');
+    setSelectedFiles([]);
     setShowEmojiPicker(false);
     
     if (socket && isTyping) {
@@ -170,13 +244,66 @@ export default function ChatDetail() {
       socket.emit('stopTyping', otherUser._id);
     }
 
+    // Handle File Uploads first if any
+    let uploadedMediaUrl = null;
+    let messageType = 'text';
+
+    if (currentFiles.length > 0) {
+      setIsUploading(true);
+      const file = currentFiles[0]; // For simplicity, handle one file per message for now
+      const formData = new FormData();
+      formData.append('image', file); // the backend expects 'image' for upload route
+
+      if (file.type.startsWith('image/')) messageType = 'image';
+      else if (file.type.startsWith('video/')) messageType = 'video';
+      else messageType = 'file';
+
+      try {
+        const uploadRes = await api.post('/api/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        if (uploadRes.data.success) {
+          uploadedMediaUrl = uploadRes.data.url;
+        }
+      } catch (err) {
+        console.error("Upload error", err);
+        showToast("Failed to upload file", "error");
+        setIsUploading(false);
+        return; // Stop if upload fails
+      }
+      setIsUploading(false);
+    }
+
+    // Optimistic UI update
+    const clientMessageId = `temp-${Date.now()}`;
+    const optimisticMessage = {
+      _id: clientMessageId,
+      clientMessageId,
+      conversation: conversationId,
+      sender: authUser,
+      text,
+      mediaUrl: uploadedMediaUrl,
+      messageType,
+      status: 'sending',
+      createdAt: new Date().toISOString()
+    };
+
+    setMessages(prev => [...prev, optimisticMessage]);
+
     try {
-      const res = await api.post(`/api/messages/${conversationId}`, { text });
+      const res = await api.post(`/api/messages/${conversationId}`, { 
+        text, 
+        mediaUrl: uploadedMediaUrl, 
+        messageType,
+        clientMessageId
+      });
       if (res.data.success) {
-        setMessages(prev => [...prev, res.data.data]);
+        // Replace optimistic message with real message
+        setMessages(prev => prev.map(m => m.clientMessageId === clientMessageId ? res.data.data : m));
       }
     } catch (error) {
       showToast("Failed to send message", "error");
+      setMessages(prev => prev.map(m => m.clientMessageId === clientMessageId ? { ...m, status: 'failed' } : m));
     }
   };
 
@@ -232,13 +359,13 @@ export default function ChatDetail() {
     }
   };
 
-  const handleAddReaction = (msgId, emoji) => {
+  const handleAddReaction = useCallback((msgId, emoji) => {
     setMessageReactions(prev => ({
       ...prev,
       [msgId]: [...(prev[msgId] || []), emoji]
     }));
     setReactionMenuMsgId(null);
-  };
+  }, []);
 
   const isOnline = otherUser ? onlineUsers?.includes(otherUser._id) : false;
 
@@ -251,7 +378,7 @@ export default function ChatDetail() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-bg-surface w-full relative">
+    <div className="flex flex-col h-full bg-bg-surface w-full relative overflow-hidden">
       
       {/* Top Navigation Header */}
       <div className="h-16 border-b border-border-soft flex items-center justify-between px-4 bg-bg-base shrink-0 z-20">
@@ -259,16 +386,26 @@ export default function ChatDetail() {
           <Link to="/app/chat" className="md:hidden p-2 -ml-2 text-text-primary hover:bg-bg-surface rounded-full">
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <div className="relative">
-            <img src={otherUser.profilePicture || "https://i.pravatar.cc/150"} alt="avatar" className="w-10 h-10 rounded-full object-cover border border-primary-500/30" />
+          <Link to={`/app/profile/${otherUser?._id}`} className="relative group shrink-0">
+            <img src={otherUser?.profilePicture || "https://i.pravatar.cc/150"} alt="avatar" className="w-10 h-10 rounded-full object-cover border border-primary-500/30 group-hover:opacity-80 transition-opacity" />
             {isOnline && <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-bg-base rounded-full" />}
-          </div>
+          </Link>
           <div>
-            <h3 className="font-bold text-text-primary text-sm flex items-center gap-1">
-              {otherUser.fullName || otherUser.username}
-            </h3>
-            <span className="text-[11px] text-text-secondary">
-              {remoteTyping ? <span className="text-primary-500 font-bold animate-pulse">typing...</span> : isOnline ? 'Active Now' : 'Offline'}
+            <Link to={`/app/profile/${otherUser?._id}`} className="font-bold text-text-primary text-sm flex items-center gap-1 hover:underline">
+              {otherUser?.fullName || otherUser?.username}
+            </Link>
+            <span className="text-[11px] text-text-secondary flex items-center h-4">
+              {remoteTyping ? (
+                <span className="text-primary-500 font-bold flex items-center gap-0.5">
+                  <span className="animate-bounce" style={{ animationDelay: '0ms' }}>.</span>
+                  <span className="animate-bounce" style={{ animationDelay: '150ms' }}>.</span>
+                  <span className="animate-bounce" style={{ animationDelay: '300ms' }}>.</span>
+                </span>
+              ) : isOnline ? (
+                'Active Now'
+              ) : (
+                otherUser?.lastSeen ? `Active ${formatDistanceToNow(new Date(otherUser.lastSeen))} ago` : 'Offline'
+              )}
             </span>
           </div>
         </div>
@@ -308,84 +445,23 @@ export default function ChatDetail() {
 
       {/* Chat Messages List */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg) => {
-          const isMine = msg.sender?._id === authUser?._id || msg.sender === authUser?._id;
-          const reactions = messageReactions[msg._id] || [];
-
-          return (
-            <div key={msg._id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} group relative`}>
-              
-              {/* Snap Disappearing Message Bubble */}
-              {msg.isSnap ? (
-                <div 
-                  onClick={() => setActiveSnap(msg)}
-                  className={`cursor-pointer p-4 rounded-2xl flex items-center gap-3 shadow-lg border transition-all ${isMine ? 'bg-primary-500/20 border-primary-500/40 text-white' : 'glass-card border-white/10 text-white'}`}
-                >
-                  <div className="w-10 h-10 rounded-full hero-gradient flex items-center justify-center shadow-glow">
-                    <Camera className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-sm text-text-primary">
-                      {msg.isOpened ? 'Snap Opened' : 'Tap to View Snap'}
-                    </h4>
-                    <p className="text-xs text-text-secondary">
-                      {msg.snapTimer || 10}s • {msg.viewMode === 'view_once' ? 'View Once' : 'Replay Once'}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                /* Standard Message Bubble */
-                <div 
-                  onDoubleClick={() => setReactionMenuMsgId(msg._id)}
-                  className={`max-w-[75%] p-3.5 rounded-2xl text-sm relative leading-relaxed ${
-                    isMine 
-                      ? 'bg-gradient-to-r from-primary-600 to-secondary-600 text-white rounded-br-none shadow-glow' 
-                      : 'bg-bg-base text-text-primary border border-border-soft rounded-bl-none shadow-sm'
-                  }`}
-                >
-                  {/* Voice Note Player */}
-                  {msg.messageType === 'voice' ? (
-                    <div className="flex items-center gap-3 pr-2">
-                      <audio src={msg.mediaUrl} controls className="h-8 max-w-[200px]" />
-                      <span className="text-xs font-mono">{msg.duration || 0}s</span>
-                    </div>
-                  ) : (
-                    <p>{msg.text}</p>
-                  )}
-
-                  {/* Reaction Badges Overlay */}
-                  {reactions.length > 0 && (
-                    <div className="absolute -bottom-3 right-2 bg-bg-base border border-border-soft px-2 py-0.5 rounded-full text-xs flex items-center gap-1 shadow-md">
-                      {reactions.map((r, idx) => <span key={idx}>{r}</span>)}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Emoji Quick Reaction Popover Menu */}
-              {reactionMenuMsgId === msg._id && (
-                <div className="flex items-center gap-1.5 p-2 bg-bg-base rounded-full border border-border-soft shadow-2xl my-1 animate-scaleIn z-30">
-                  {['❤️', '😂', '😮', '😢', '🔥', '👍'].map(emoji => (
-                    <button key={emoji} onClick={() => handleAddReaction(msg._id, emoji)} className="hover:scale-125 transition-transform text-lg p-1">
-                      {emoji}
-                    </button>
-                  ))}
-                  <button onClick={() => setReactionMenuMsgId(null)} className="text-xs text-text-secondary px-1">✕</button>
-                </div>
-              )}
-
-              {/* Timestamp & Read Receipts */}
-              <div className="flex items-center gap-1 text-[10px] text-text-secondary mt-1 px-1">
-                <span>{format(new Date(msg.createdAt), 'h:mm a')}</span>
-                {isMine && (
-                  <span>
-                    {msg.status === 'seen' ? <CheckCheck className="w-3.5 h-3.5 text-blue-500 inline" /> : <Check className="w-3.5 h-3.5 text-text-secondary inline" />}
-                  </span>
-                )}
-              </div>
-            </div>
-          );
-        })}
+        {messages.map((msg) => (
+          <MessageBubble 
+            key={msg.clientMessageId || msg._id}
+            msg={msg}
+            isMine={
+              msg.sender?._id?.toString() === authUser?._id?.toString() || 
+              msg.sender?.toString() === authUser?._id?.toString() ||
+              msg.sender === authUser?._id
+            }
+            reactions={messageReactions[msg._id] || []}
+            reactionMenuMsgId={reactionMenuMsgId}
+            setReactionMenuMsgId={setReactionMenuMsgId}
+            handleAddReaction={handleAddReaction}
+            setActiveSnap={setActiveSnap}
+            onImageClick={setActiveImage}
+          />
+        ))}
         <div ref={messagesEndRef} />
       </div>
 
@@ -401,13 +477,64 @@ export default function ChatDetail() {
         </div>
       )}
 
+
+      {/* Media Staging Area */}
+      {selectedFiles.length > 0 && (
+        <div className="bg-bg-surface border-t border-border-soft p-3 flex gap-3 overflow-x-auto">
+          {selectedFiles.map((file, idx) => (
+            <div key={idx} className="relative shrink-0">
+              <div className="w-16 h-16 bg-bg-base border border-border-soft rounded-lg flex items-center justify-center text-xs overflow-hidden">
+                {file.type.startsWith('image/') ? (
+                  <img src={URL.createObjectURL(file)} className="w-full h-full object-cover" alt="preview" />
+                ) : file.type.startsWith('video/') ? (
+                  <Video className="w-6 h-6 text-primary-500" />
+                ) : (
+                  <span className="truncate max-w-[50px] p-1">{file.name}</span>
+                )}
+              </div>
+              <button 
+                type="button"
+                onClick={() => removeSelectedFile(idx)}
+                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 shadow-md hover:scale-110 transition-transform"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Input Message & Controls Toolbar */}
       <form
         onSubmit={handleSendMessage}
-        className="shrink-0 z-20 border-t border-border-soft bg-bg-base"
+        className="shrink-0 z-20 border-t border-border-soft bg-bg-base relative"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
+        {/* Snapchat-Style Real-time Presence Avatar */}
+        <div className="absolute bottom-full left-0 w-full pointer-events-none">
+          <ConversationPresenceAvatar 
+            otherUser={otherUser} 
+            isPresent={isOtherUserPresent} 
+            isTyping={remoteTyping} 
+          />
+        </div>
+        {isUploading && (
+          <div className="absolute top-0 left-0 right-0 h-1 bg-bg-surface overflow-hidden">
+            <div className="h-full bg-primary-500 animate-pulse w-full"></div>
+          </div>
+        )}
         <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2.5">
+          <label className="min-w-[44px] min-h-[44px] flex items-center justify-center text-text-secondary hover:text-text-primary rounded-full hover:bg-bg-surface shrink-0 cursor-pointer">
+            <Paperclip className="w-5 h-5" />
+            <input 
+              type="file" 
+              multiple 
+              className="hidden" 
+              onChange={handleFileSelect}
+              accept="image/*,video/*,.pdf,.doc,.docx,.txt"
+            />
+          </label>
+
           <button 
             type="button" 
             onClick={() => setShowEmojiPicker(!showEmojiPicker)} 
@@ -436,11 +563,11 @@ export default function ChatDetail() {
 
           <button 
             type="submit" 
-            disabled={!newMessage.trim()} 
+            disabled={(!newMessage.trim() && selectedFiles.length === 0) || isUploading} 
             className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full hero-gradient text-white disabled:opacity-40 shadow-glow shadow-primary-500/30 shrink-0"
             aria-label="Send message"
           >
-            <Send className="w-4 h-4" />
+            {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </button>
         </div>
       </form>
@@ -485,6 +612,8 @@ export default function ChatDetail() {
         </div>
       )}
 
+      {/* Full Screen Image Viewer Modal */}
+      <ImageViewerModal src={activeImage} onClose={() => setActiveImage(null)} />
     </div>
   );
 }

@@ -99,21 +99,25 @@ export default function VaultPage() {
 
   // Fetch Vault Data
   useEffect(() => {
-    if (isUnlocked) {
-      fetchVaultData();
-    }
+    // Only block fetching private/security if locked
+    if ((activeTab === "private" || activeTab === "security") && !isUnlocked) return;
+    
+    fetchVaultData();
   }, [isUnlocked, activeTab, searchQuery, dateFilter]);
 
   const fetchVaultData = async () => {
     setLoading(true);
     try {
       if (activeTab === "timeline") {
-        const res = await getMemories({ search: searchQuery });
+        const res = await getMemories({ search: searchQuery, isPrivate: false });
         let data = res.data || [];
         if (dateFilter === "flashback") {
           data = data.filter(m => new Date(m.memoryDate).getDate() === new Date().getDate());
         }
         setMemories(data);
+      } else if (activeTab === "private") {
+        const res = await getMemories({ search: searchQuery, isPrivate: true });
+        setMemories(res.data || []);
       } else if (activeTab === "albums") {
         const res = await getVaultAlbums();
         setAlbums(res.data || []);
@@ -239,77 +243,75 @@ export default function VaultPage() {
     showToast("Memory downloaded to device!", "success");
   };
 
-  // Locked Screen: Security PIN & Biometrics Keypad
-  if (!isUnlocked) {
-    return (
-      <div className="min-h-[85vh] bg-bg-base flex items-center justify-center p-4">
-        <div className="glass-card p-8 rounded-3xl border border-white/10 max-w-sm w-full space-y-6 text-center shadow-2xl backdrop-blur-xl">
-          <div className="w-16 h-16 bg-primary-500/10 rounded-full flex items-center justify-center text-primary-500 mx-auto animate-pulse">
-            <Lock className="w-8 h-8" />
-          </div>
+  // Render Locked Screen component
+  const renderLockScreen = () => (
+    <div className="flex flex-col items-center justify-center p-4">
+      <div className="glass-card p-8 rounded-3xl border border-white/10 max-w-sm w-full space-y-6 text-center shadow-2xl backdrop-blur-xl">
+        <div className="w-16 h-16 bg-primary-500/10 rounded-full flex items-center justify-center text-primary-500 mx-auto animate-pulse">
+          <Lock className="w-8 h-8" />
+        </div>
 
-          <div>
-            <h2 className="text-xl font-black text-white">Memories Vault Locked</h2>
-            <p className="text-xs text-text-secondary mt-1">Enter your 4-digit security PIN or use Biometric Auth</p>
-          </div>
+        <div>
+          <h2 className="text-xl font-black text-white">Private Memories Locked</h2>
+          <p className="text-xs text-text-secondary mt-1">Enter your 4-digit security PIN to unlock this tab</p>
+        </div>
 
-          {/* 4-Dot Indicator */}
-          <div className="flex justify-center gap-4 py-2">
-            {[0, 1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className={`w-4 h-4 rounded-full border border-primary-500 transition-all ${
-                  pinInput.length > i ? "bg-primary-500 scale-110 shadow-glow" : "bg-bg-base"
-                }`}
-              />
-            ))}
-          </div>
+        {/* 4-Dot Indicator */}
+        <div className="flex justify-center gap-4 py-2">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className={`w-4 h-4 rounded-full border border-primary-500 transition-all ${
+                pinInput.length > i ? "bg-primary-500 scale-110 shadow-glow" : "bg-bg-base"
+              }`}
+            />
+          ))}
+        </div>
 
-          {pinError && (
-            <p className="text-xs font-bold text-red-400 flex items-center justify-center gap-1">
-              <AlertTriangle className="w-3.5 h-3.5" /> {pinError} {isLockedOut && `(${lockoutTimer}s)`}
-            </p>
-          )}
+        {pinError && (
+          <p className="text-xs font-bold text-red-400 flex items-center justify-center gap-1">
+            <AlertTriangle className="w-3.5 h-3.5" /> {pinError} {isLockedOut && `(${lockoutTimer}s)`}
+          </p>
+        )}
 
-          {/* Keypad */}
-          <div className="grid grid-cols-3 gap-3 pt-2">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-              <button
-                key={num}
-                disabled={isLockedOut}
-                onClick={() => handleKeypadPress(num.toString())}
-                className="py-3 bg-bg-base hover:bg-bg-surface border border-border-soft rounded-2xl text-lg font-bold transition-all active:scale-95 text-white disabled:opacity-40"
-              >
-                {num}
-              </button>
-            ))}
+        {/* Keypad */}
+        <div className="grid grid-cols-3 gap-3 pt-2">
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
             <button
-              onClick={() => setIsUnlocked(true)}
-              className="py-3 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-2xl flex items-center justify-center transition-all hover:bg-emerald-500/20"
-              title="Biometric Auth Ready"
-            >
-              <Fingerprint className="w-5 h-5" />
-            </button>
-            <button
+              key={num}
               disabled={isLockedOut}
-              onClick={() => handleKeypadPress("0")}
+              onClick={() => handleKeypadPress(num.toString())}
               className="py-3 bg-bg-base hover:bg-bg-surface border border-border-soft rounded-2xl text-lg font-bold transition-all active:scale-95 text-white disabled:opacity-40"
             >
-              0
+              {num}
             </button>
-            <button
-              onClick={() => setPinInput("")}
-              className="py-3 bg-bg-base text-text-secondary border border-border-soft rounded-2xl text-xs font-bold transition-all"
-            >
-              Clear
-            </button>
-          </div>
+          ))}
+          <button
+            onClick={() => setIsUnlocked(true)}
+            className="py-3 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-2xl flex items-center justify-center transition-all hover:bg-emerald-500/20"
+            title="Biometric Auth Ready"
+          >
+            <Fingerprint className="w-5 h-5" />
+          </button>
+          <button
+            disabled={isLockedOut}
+            onClick={() => handleKeypadPress("0")}
+            className="py-3 bg-bg-base hover:bg-bg-surface border border-border-soft rounded-2xl text-lg font-bold transition-all active:scale-95 text-white disabled:opacity-40"
+          >
+            0
+          </button>
+          <button
+            onClick={() => setPinInput("")}
+            className="py-3 bg-bg-base text-text-secondary border border-border-soft rounded-2xl text-xs font-bold transition-all"
+          >
+            Clear
+          </button>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
 
-  // Unlocked: Memories Vault Studio
+  // Main UI
   return (
     <div className="min-h-screen bg-bg-base text-text-primary p-4 md:p-8 space-y-8 max-w-7xl mx-auto">
       
@@ -354,6 +356,7 @@ export default function VaultPage() {
         <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto scrollbar-none">
           {[
             { id: "timeline", label: "AI Timeline", icon: Calendar },
+            { id: "private", label: "My Eyes Only", icon: EyeOff },
             { id: "albums", label: "Albums", icon: FolderPlus },
             { id: "favorites", label: "Favorites", icon: Heart },
             { id: "trash", label: "Trash Bin", icon: Trash2 },
@@ -403,7 +406,9 @@ export default function VaultPage() {
       </div>
 
       {/* Grid Content Display */}
-      {loading ? (
+      {((activeTab === 'private' || activeTab === 'security') && !isUnlocked) ? (
+        renderLockScreen()
+      ) : loading ? (
         <div className="py-20 text-center text-text-secondary">Loading vault items...</div>
       ) : activeTab === "security" ? (
         <div className="max-w-md mx-auto glass-card p-6 rounded-3xl border border-white/10 space-y-4">
